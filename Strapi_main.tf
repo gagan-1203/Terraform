@@ -2,7 +2,7 @@ terraform{
   backend "s3"{
     encrypt = false
     bucket = "tf-state-test4"
-    dyanmodb_table = "tf-state-test"
+    dynamodb_table = "tf-state-test"
     key = "path/path/tf-state-test"
     region =  "ap-south-1" 
   }
