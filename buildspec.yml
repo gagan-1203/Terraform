@@ -1,20 +1,30 @@
 version: 0.2
 
+env:
+  variables:
+    NODE_ENV: "dev"
+
 phases:
   install:
+    runtime-versions:
+      nodejs: 12
     commands:
-      - "apt install unzip -y"
-      - "wget https://releases.hashicorp.com/terraform/1.2.3/terraform_1.2.3_linux_amd64.zip"
-      - "unzip terraform_1.2.3_linux_amd64.zip"
-      - "mv terraform /usr/local/bin"
+      - npm i
+      # - npm run lint
   pre_build:
     commands:
-      - terraform init
+      - npm i
+      - npm run test
   build:
     commands:
-      - terraform $TF_COMMAND -auto-approve
-   
-  post_build:
-    commands:
-      -echo terraform $TF_COMMAND completed on 'date'
+      - npm run build
 
+artifacts:
+  files:
+    - "**/*"
+  name: "web-dist-dev"
+  base-directory: build
+
+cache:
+  paths:
+    - /root/.npm/**/*
