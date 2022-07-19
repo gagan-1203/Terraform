@@ -1,13 +1,13 @@
-terraform{
-  backend "s3"{
-    encrypt = false
-    bucket = "tf-state-test4"
-    dynamodb_table = "tf-state-test"
-    key = "path/path/tf-state-test"
-    region =  "ap-south-1" 
-  }
+# terraform{
+#   backend "s3"{
+#     encrypt = false
+#     bucket = "tf-artifact-bucket1"
+#     dyanmodb_table = "tf-state-test"
+#     key = "path/path/tf-state-test"
+#     region =  "us-east-1" 
+#   }
 
-}
+# }
 
 
 #---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ resource "aws_route_table" "allow-outgoing-access" {
 resource "aws_subnet" "strapi-subnet1" {
   cidr_block = "10.0.0.0/24"
   vpc_id = aws_vpc.strapi-vpc.id
-  availability_zone = "ap-south-1a"
+  availability_zone = "us-east-1a"
 
   tags = {
     Name = "Strapi Subnet1"
@@ -76,7 +76,7 @@ resource "aws_subnet" "strapi-subnet1" {
 resource "aws_subnet" "strapi-subnet2" {
   cidr_block = "10.0.1.0/24"
   vpc_id = aws_vpc.strapi-vpc.id
-  availability_zone = "ap-south-1b"
+  availability_zone = "us-east-1b"
 
   tags = {
     Name = "Strapi Subnet2"
@@ -86,7 +86,7 @@ resource "aws_subnet" "strapi-subnet2" {
 resource "aws_subnet" "strapi-subnet3" {
   cidr_block = "10.0.2.0/24"
   vpc_id = aws_vpc.strapi-vpc.id
-  availability_zone = "ap-south-1c"
+  availability_zone = "us-east-1c"
 
   tags = {
     Name = "Strapi Subnet3"
@@ -246,7 +246,7 @@ resource "aws_lb_target_group" "strapi-target-group" {
 
 resource "aws_launch_configuration" "strapi-configuration" {
   name = "Strapi-Instance"
-  image_id =  "ami-07eaf27c7c4a884cf"
+  image_id =  "ami-0500e6cffe668eb27"
   instance_type = "t2.small"
   key_name        = "Public" # EC2_servers_key
   security_groups = [aws_security_group.strapi-SG.id]
@@ -300,3 +300,339 @@ resource "aws_autoscaling_attachment" "strapi_autoscaling_attachment" {
   lb_target_group_arn    = aws_lb_target_group.strapi-target-group.arn
   autoscaling_group_name = aws_autoscaling_group.strapi_autoscaling_group.id
 }
+
+
+
+data "template_file" "buildspec" {
+  template = "${file("buildspec.yml")}"
+  vars = {
+    env          = "dev"
+  }
+}
+
+
+#---------------------------------------------------------------------------
+#13 Roles and policies
+#---------------------------------------------------------------------------
+
+resource "aws_iam_role" "codebuild_role" {
+  name = "codebuild_role"
+
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codebuild.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+resource "aws_iam_role_policy" "codebuild_policy" {
+  name = "codebuild_policy"
+  role = aws_iam_role.codebuild_role.id
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+       
+        {
+            "Effect": "Allow",
+            "Resource": [
+                "arn:aws:s3:::tf-artifact-bucket1/*"
+            ],
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:GetObjectVersion",
+                "s3:GetBucketAcl",
+                "s3:GetBucketLocation"
+            ]
+        },
+        {
+          "Effect": "Allow",
+          "Resource": [
+            "*"
+          ],
+          "Action": [
+            "logs:CreateLogGroup",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents"
+          ]
+        }
+    ]
+}
+EOF
+}
+
+resource "aws_iam_role" "codepipeline_role2" {
+  name                 = "codepipeline-role2"
+  assume_role_policy   = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codepipeline.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+}
+
+
+resource "aws_iam_role_policy" "codepipeline_policy" {
+  name = "codepipeline_policy"
+  role = aws_iam_role.codepipeline_role2.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect":"Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::*/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:BatchGetBuilds",
+        "codebuild:StartBuild",
+        "codedeploy:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+
+resource "aws_iam_policy" "codepipeline_policyEC2" {
+  name = "codepipeline_policyEC2"
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect":"Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::*/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:BatchGetBuilds",
+        "codebuild:StartBuild",
+        "codedeploy:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+#---------------------------------------------------------------------------
+#14 AWS CodeBuild script
+#---------------------------------------------------------------------------
+
+resource "aws_codebuild_project" "strapi_build" {
+  badge_enabled  = false
+  build_timeout  = 60
+  name           = "strapi-web-build"
+  queued_timeout = 480
+  service_role   =  aws_iam_role.codebuild_role.arn
+  tags = {
+    Environment = "dev"
+  }
+
+  artifacts {
+    encryption_disabled    = false
+    name                   = "strapi-build-dev"
+    override_artifact_name = false
+    packaging              = "NONE"
+    type                   = "CODEPIPELINE"
+  }
+
+  environment {
+    compute_type                = "BUILD_GENERAL1_SMALL"
+    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:2.0"
+    image_pull_credentials_type = "CODEBUILD"
+    privileged_mode             = false
+    type                        = "LINUX_CONTAINER"
+  }
+
+  logs_config {
+    cloudwatch_logs {
+      status = "ENABLED"
+    }
+
+    s3_logs {
+      encryption_disabled = false
+      status              = "DISABLED"
+    }
+  }
+
+  source {
+    buildspec           = data.template_file.buildspec.rendered
+    git_clone_depth     = 0
+    insecure_ssl        = false
+    report_build_status = false
+    type                = "CODEPIPELINE"
+  }
+}
+
+
+#---------------------------------------------------------------------------
+#15 Create pipeline and use CodeBuild
+#---------------------------------------------------------------------------
+
+resource "aws_codepipeline" "strapi_pipeline" {
+  name     = "strapi_pipeline"
+  role_arn = aws_iam_role.codepipeline_role2.arn
+  tags     = {
+    Environment = "dev"
+  }
+
+  artifact_store {
+    location = "tf-artifact-bucket1"
+    type     = "S3"
+  }
+
+  stage {
+    name = "Source"
+
+    action {
+      category = "Source"
+      configuration = {
+        OAuthToken = "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"
+        "Branch"               = "main"
+        "Owner"                = "gagan-1203"
+        "PollForSourceChanges" = "false"
+        "Repo"                 = "Terraform"
+      }
+      input_artifacts = []
+      name            = "Source"
+      output_artifacts = ["SourceArtifact"]
+      owner     = "ThirdParty"
+      provider  = "GitHub"
+      run_order = 1
+      version   = "2"
+    }
+  }
+  stage {
+    name = "Build"
+
+    action {
+      category = "Build"
+      configuration = {
+        "EnvironmentVariables" = jsonencode(
+          [
+            {
+              name  = "environment"
+              type  = "PLAINTEXT"
+              value = "dev"
+            },
+          ]
+        )
+        "ProjectName" = "strapi-build"
+      }
+      input_artifacts = [
+        "SourceArtifact",
+      ]
+      name = "Build"
+      output_artifacts = [
+        "BuildArtifact",
+      ]
+      owner     = "AWS"
+      provider  = "CodeBuild"
+      run_order = 1
+      version   = "1"
+    }
+  }
+  stage {
+    name = "Deploy"
+
+    action {
+      category = "Deploy"
+      configuration = {
+        "BucketName" = "tf-artifact-bucket1"
+        "Extract"    = "true"
+      }
+      input_artifacts = [
+        "BuildArtifact",
+      ]
+      name             = "Deploy"
+      output_artifacts = []
+      owner            = "AWS"
+      provider         = "S3"
+      run_order        = 1
+      version          = "1"
+    }
+  }
+}
+
+
+# #---------------------------------------------------------------------------
+# #16 Webhooks for AWS and GitHub, using random secret key
+# #---------------------------------------------------------------------------
+
+# resource "aws_codepipeline_webhook" "codepipeline_webhook" {
+#   authentication  = "GITHUB_HMAC"
+#   name            = "codepipeline-webhook"
+#   target_action   = "Source"
+#   target_pipeline = aws_codepipeline.strapi_pipeline.name
+
+#   authentication_configuration {
+#     secret_token = random_string.github_secret.result
+#   }
+
+#   filter {
+#     json_path    = "$.ref"
+#     match_equals = "refs/heads/{Branch}"
+#   }
+#   tags = {}
+# }
+
+# resource "github_repository_webhook" "github_hook" {
+#   repository = "Terraform"
+#   events     = ["push"]
+
+#   configuration {
+#     url          = aws_codepipeline_webhook.codepipeline_webhook.url
+#     insecure_ssl = "0"
+#     content_type = "json"
+#     secret       = random_string.github_secret.result
+#   }
+# }
+
+# resource "random_string" "github_secret" {
+#   length  = 99
+#   special = false
+# }
